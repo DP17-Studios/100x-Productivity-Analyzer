@@ -4,16 +4,23 @@ Productivity Agent - GitHub/Jira/Slack Integration
 
 A comprehensive agent that:
 - Integrates with GitHub, Jira, and Slack via Composio
-- Uses LlamaIndex for semantic indexing of PR descriptions, commits, and Jira tickets
+- Uses TF-IDF based semantic indexing of PR descriptions, commits, and Jira tickets
 - Generates daily productivity summaries with context-aware scoring
 - Posts top contributors to Slack and displays ASCII output to console
-- Uses only local LLMs and no external APIs
+- Uses only local processing and no external APIs
 """
 
 import os
 import sys
 import asyncio
+import argparse
 import schedule
+
+# Set UTF-8 encoding for Windows console
+if sys.platform == 'win32':
+    import codecs
+    sys.stdout = codecs.getwriter('utf-8')(sys.stdout.detach())
+    sys.stderr = codecs.getwriter('utf-8')(sys.stderr.detach())
 import time
 from datetime import datetime, timedelta
 import pytz
@@ -30,21 +37,12 @@ from src.reports.summary_generator import SummaryGenerator
 from src.utils.logger import setup_logger
 from src.utils.ascii_art import ASCIIRenderer
 
-# Try to import LlamaIndex indexer, fall back to simple version if not available
-try:
-    from src.semantic.indexer import SemanticIndexer
-    LLAMAINDEX_AVAILABLE = True
-except ImportError:
-    from src.semantic.simple_indexer import SimpleSemanticIndexer as SemanticIndexer
-    LLAMAINDEX_AVAILABLE = False
+# Using TF-IDF based semantic indexer
+from src.semantic.indexer import SimpleSemanticIndexer as SemanticIndexer
 
-# Default to direct API integration, Composio optional
-try:
-    from src.integrations.composio_manager import ComposioManager
-    COMPOSIO_AVAILABLE = True
-except ImportError:
-    from src.integrations.fallback_manager import FallbackManager as ComposioManager
-    COMPOSIO_AVAILABLE = False
+# Composio integration (required)
+from src.integrations.composio_manager import ComposioManager
+COMPOSIO_AVAILABLE = True
 
 # Load environment variables
 load_dotenv()
@@ -69,8 +67,7 @@ class ProductivityAgent:
         try:
             console.print("[bold blue]Initializing Productivity Agent...[/bold blue]")
             
-            if not COMPOSIO_AVAILABLE:
-                console.print("[blue]Using direct API integration (Composio optional)[/blue]")
+
             
             # Validate configuration before initializing
             console.print("[cyan]Validating configuration...[/cyan]")
@@ -90,19 +87,14 @@ class ProductivityAgent:
             
             # Initialize API connections
             await self.composio_manager.initialize(validate_only=False)
-            if COMPOSIO_AVAILABLE:
-                console.print("[green]Composio integrations initialized[/green]")
-            else:
-                console.print("[green]Direct API integrations initialized[/green]")
+            console.print("[green]Composio integrations initialized[/green]")
             
             # Initialize semantic indexer
             await self.semantic_indexer.initialize()
-            if LLAMAINDEX_AVAILABLE:
-                console.print("[green]LlamaIndex semantic indexer initialized[/green]")
-            else:
-                console.print("[green]Simple TF-IDF semantic indexer initialized[/green]")
+            console.print("[green]TF-IDF semantic indexer initialized[/green]")
             
             console.print("[bold green]Agent initialization complete![/bold green]")
+            return True
             
         except Exception as e:
             logger.error(f"Failed to initialize agent: {e}")
@@ -163,7 +155,7 @@ class ProductivityAgent:
             end_date = datetime.now(pytz.timezone(self.config.timezone))
             start_date = end_date - timedelta(days=self.config.lookback_days)
             
-            console.print(f"[cyan]📅 Analyzing period: {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}[/cyan]")
+            console.print(f"[cyan]Analyzing period: {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}[/cyan]")
             
             # Collect data from all sources
             github_data = await self.composio_manager.fetch_github_data(start_date, end_date)
@@ -212,18 +204,18 @@ class ProductivityAgent:
         for i, score_data in enumerate(scores[:10], 1):
             table.add_row(
                 str(i),
-                score_data['engineer'],
-                f"{score_data['total_score']:.2f}",
-                str(score_data['github_stats']['prs_created']),
-                str(score_data['github_stats']['commits_made']),
-                str(score_data['jira_stats']['tickets_completed'])
+                score_data.engineer,
+                f"{score_data.total_score:.2f}",
+                str(score_data.github_stats.prs_created),
+                str(score_data.github_stats.commits_made),
+                str(score_data.jira_stats.tickets_completed)
             )
         
         console.print(table)
         
         # Summary panel
         summary_panel = Panel(
-            summary['overview'],
+            summary['executive_summary'],
             title="Executive Summary",
             border_style="blue"
         )
@@ -247,31 +239,38 @@ class ProductivityAgent:
             lambda: asyncio.create_task(self.run_daily_analysis())
         )
         
-        console.print(f"[green]⏰ Scheduled daily reports at {self.config.daily_report_time}[/green]")
+        console.print(f"[green]Scheduled daily reports at {self.config.daily_report_time}[/green]")
     
     async def run_forever(self):
         """Run the agent continuously"""
-        console.print("[bold green]🔄 Agent running continuously...[/bold green]")
-        console.print("[yellow]Press Ctrl+C to stop[/yellow]\n")
+        console.print("[bold green]Agent running continuously...[/bold green]")
+        console.print(f"[cyan]Next scheduled run: {self.config.daily_report_time}[/cyan]")
+        console.print("[yellow]Press Ctrl+C to stop[/yellow]")
+        console.print("[dim]Tip: Use 'python main.py --run-now' to run immediately[/dim]\n")
         
         while True:
             schedule.run_pending()
             await asyncio.sleep(60)  # Check every minute
 
+    async def cleanup(self):
+        """Clean up resources"""
+        if self.composio_manager:
+            await self.composio_manager.cleanup()
+        console.print("[green]Cleanup completed[/green]")
+
 async def main():
     """Main entry point"""
+    parser = argparse.ArgumentParser(description='Productivity Agent - GitHub/Jira/Slack Integration')
+    parser.add_argument('--run-now', action='store_true', help='Run analysis immediately instead of scheduling')
+    parser.add_argument('--schedule-time', type=str, help='Override daily report time (HH:MM format)')
+    args = parser.parse_args()
+    
     console.print("[bold blue]Productivity Agent v2.0 - Unified Requirements[/bold blue]\n")
     
     # Show feature availability
-    if COMPOSIO_AVAILABLE:
-        console.print("[green]Composio integration available[/green]")
-    else:
-        console.print("[yellow]Composio not available - using direct APIs[/yellow]")
+    console.print("[green]Composio integration available[/green]")
     
-    if LLAMAINDEX_AVAILABLE:
-        console.print("[green]LlamaIndex semantic analysis available[/green]")
-    else:
-        console.print("[yellow]LlamaIndex not available - using TF-IDF fallback[/yellow]")
+    console.print("[green]TF-IDF semantic analysis available[/green]")
     
     console.print()
     
@@ -284,21 +283,34 @@ async def main():
             console.print("1. Copy .env.example to .env: [blue]copy .env.example .env[/blue]")
             console.print("2. Edit .env file with your actual API keys")
             console.print("3. Run the agent again: [blue]python main.py[/blue]")
-            console.print("\n[cyan]For detailed setup instructions, see QUICKSTART.md[/cyan]")
+            console.print("\n[cyan]For detailed setup instructions, see README.md[/cyan]")
             sys.exit(1)
         
+        # Override schedule time if provided
+        if args.schedule_time:
+            agent.config.daily_report_time = args.schedule_time
+        
         # Check if we should run immediately or just schedule
-        if len(sys.argv) > 1 and sys.argv[1] == "--run-now":
+        if args.run_now:
             await agent.run_daily_analysis()
         else:
             agent.schedule_daily_run()
             await agent.run_forever()
             
     except KeyboardInterrupt:
-        console.print("\n[yellow]Agent stopped by user[/yellow]")
+        console.print("\n[yellow]Shutting down gracefully...[/yellow]")
+        if 'agent' in locals():
+            await agent.cleanup()
     except Exception as e:
-        console.print(f"[bold red]Agent crashed: {e}[/bold red]")
+        console.print(f"\n[bold red]Error: {e}[/bold red]")
+        if 'agent' in locals():
+            await agent.cleanup()
         sys.exit(1)
+    finally:
+        if 'agent' in locals():
+            await agent.cleanup()
+
+
 
 if __name__ == "__main__":
     asyncio.run(main())

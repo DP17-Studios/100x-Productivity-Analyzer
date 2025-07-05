@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-Semantic Indexer - Local LlamaIndex implementation for GitHub and Jira content
+TF-IDF Semantic Indexer - Primary semantic analysis implementation
+Uses basic text similarity and TF-IDF for semantic analysis
 """
 
 import os
@@ -10,14 +11,11 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime
 import logging
 from dataclasses import dataclass
-
-# LlamaIndex imports
-from llama_index.core import Document, VectorStoreIndex, Settings
-from llama_index.core.storage.storage_context import StorageContext
-from llama_index.core.storage.docstore import SimpleDocumentStore
-from llama_index.core.storage.index_store import SimpleIndexStore
-from llama_index.core.vector_stores import SimpleVectorStore
-from llama_index.embeddings.huggingface import HuggingFaceEmbedding
+from collections import Counter
+import re
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+import numpy as np
 
 # Local imports
 from ..integrations.composio_manager import GitHubData, JiraData
@@ -25,8 +23,8 @@ from ..integrations.composio_manager import GitHubData, JiraData
 logger = logging.getLogger(__name__)
 
 @dataclass
-class IndexedDocument:
-    """Structure for indexed documents"""
+class SimpleDocument:
+    """Simple document structure for fallback indexer"""
     doc_id: str
     content: str
     metadata: Dict[str, Any]
@@ -34,80 +32,41 @@ class IndexedDocument:
     doc_type: str  # 'pr', 'commit', 'issue', 'ticket', 'comment'
     author: str
     created_at: str
-    embedding: Optional[List[float]] = None
+    tfidf_vector: Optional[np.ndarray] = None
 
-class SemanticIndexer:
-    """Handles semantic indexing of GitHub and Jira content using local embeddings"""
+class SimpleSemanticIndexer:
+    """Fallback semantic indexer using scikit-learn TF-IDF"""
     
     def __init__(self, config):
         self.config = config
-        self.index: Optional[VectorStoreIndex] = None
-        self.storage_context: Optional[StorageContext] = None
-        self.documents: List[IndexedDocument] = []
+        self.documents: List[SimpleDocument] = []
+        self.vectorizer: Optional[TfidfVectorizer] = None
+        self.tfidf_matrix: Optional[np.ndarray] = None
         
-        # Index storage paths
-        self.index_dir = os.path.join(self.config.embeddings_dir, 'index')
-        self.documents_file = os.path.join(self.config.data_dir, 'indexed_documents.pkl')
-        
-        # Create directories
-        os.makedirs(self.index_dir, exist_ok=True)
+        # Storage paths
+        self.documents_file = os.path.join(self.config.data_dir, 'simple_documents.pkl')
+        self.vectorizer_file = os.path.join(self.config.data_dir, 'tfidf_vectorizer.pkl')
         
     async def initialize(self):
-        """Initialize the semantic indexer with local embeddings"""
+        """Initialize the simple semantic indexer"""
         try:
-            # Configure LlamaIndex to use local embeddings
-            embed_model = HuggingFaceEmbedding(
-                model_name="sentence-transformers/all-MiniLM-L6-v2",
-                cache_folder=os.path.join(self.config.embeddings_dir, 'models')
+            # Initialize TF-IDF vectorizer
+            self.vectorizer = TfidfVectorizer(
+                max_features=5000,
+                stop_words='english',
+                ngram_range=(1, 2),
+                max_df=0.95,
+                min_df=2
             )
-            
-            Settings.embed_model = embed_model
-            Settings.chunk_size = 512
-            Settings.chunk_overlap = 50
-            
-            # Initialize storage context
-            self._initialize_storage()
             
             # Load existing documents if available
             self._load_existing_documents()
             
-            logger.info("Semantic indexer initialized successfully")
+            logger.info("Simple semantic indexer initialized successfully")
             
         except Exception as e:
-            logger.error(f"Failed to initialize semantic indexer: {e}")
+            logger.error(f"Failed to initialize simple semantic indexer: {e}")
             raise
-    
-    def _initialize_storage(self):
-        """Initialize or load storage context"""
-        try:
-            # Try to load existing storage
-            if os.path.exists(os.path.join(self.index_dir, 'docstore.json')):
-                # Load existing storage
-                docstore = SimpleDocumentStore.from_persist_dir(self.index_dir)
-                index_store = SimpleIndexStore.from_persist_dir(self.index_dir)
-                vector_store = SimpleVectorStore.from_persist_dir(self.index_dir)
-                
-                self.storage_context = StorageContext.from_defaults(
-                    docstore=docstore,
-                    index_store=index_store,
-                    vector_store=vector_store
-                )
-                
-                # Load existing index
-                self.index = VectorStoreIndex.from_storage_context(self.storage_context)
-                logger.info("Loaded existing semantic index")
-                
-            else:
-                # Create new storage
-                self.storage_context = StorageContext.from_defaults()
-                self.index = VectorStoreIndex([], storage_context=self.storage_context)
-                logger.info("Created new semantic index")
-                
-        except Exception as e:
-            logger.error(f"Failed to initialize storage: {e}")
-            # Fallback to new storage
-            self.storage_context = StorageContext.from_defaults()
-            self.index = VectorStoreIndex([], storage_context=self.storage_context)
     
     def _load_existing_documents(self):
         """Load previously indexed documents"""
@@ -116,6 +75,11 @@ class SemanticIndexer:
                 with open(self.documents_file, 'rb') as f:
                     self.documents = pickle.load(f)
                 logger.info(f"Loaded {len(self.documents)} existing documents")
+                
+                # Rebuild TF-IDF matrix if we have documents
+                if self.documents:
+                    self._rebuild_tfidf_matrix()
+                    
         except Exception as e:
             logger.error(f"Failed to load existing documents: {e}")
             self.documents = []
@@ -128,55 +92,72 @@ class SemanticIndexer:
         except Exception as e:
             logger.error(f"Failed to save documents: {e}")
     
+    def _rebuild_tfidf_matrix(self):
+        """Rebuild TF-IDF matrix from existing documents"""
+        try:
+            if not self.documents:
+                return
+                
+            texts = [doc.content for doc in self.documents]
+            self.tfidf_matrix = self.vectorizer.fit_transform(texts)
+            
+            # Update document vectors
+            for i, doc in enumerate(self.documents):
+                doc.tfidf_vector = self.tfidf_matrix[i].toarray()[0]
+                
+            logger.info(f"Rebuilt TF-IDF matrix for {len(self.documents)} documents")
+            
+        except Exception as e:
+            logger.error(f"Failed to rebuild TF-IDF matrix: {e}")
+    
     async def index_data(self, github_data: GitHubData, jira_data: JiraData):
         """Index GitHub and Jira data for semantic search"""
-        logger.info("Starting semantic indexing of data")
+        logger.info("Starting simple semantic indexing of data")
         
         new_documents = []
         
-        # Index GitHub data
+        # Process GitHub data
         new_documents.extend(self._process_github_data(github_data))
         
-        # Index Jira data
+        # Process Jira data
         new_documents.extend(self._process_jira_data(jira_data))
         
-        # Add new documents to index
+        # Add new documents to collection
         if new_documents:
-            documents_to_index = self._convert_to_llama_documents(new_documents)
-            
-            # Add to existing index or create new one
-            for doc in documents_to_index:
-                self.index.insert(doc)
-            
-            # Save the index
-            self._persist_index()
-            
-            # Update document list
             self.documents.extend(new_documents)
+            
+            # Rebuild TF-IDF matrix with all documents
+            if self.documents:
+                texts = [doc.content for doc in self.documents]
+                self.tfidf_matrix = self.vectorizer.fit_transform(texts)
+                
+                # Update all document vectors
+                for i, doc in enumerate(self.documents):
+                    doc.tfidf_vector = self.tfidf_matrix[i].toarray()[0]
+            
+            # Save documents
             self._save_documents()
             
             logger.info(f"Indexed {len(new_documents)} new documents")
         else:
             logger.info("No new documents to index")
     
-    def _process_github_data(self, github_data: GitHubData) -> List[IndexedDocument]:
+    def _process_github_data(self, github_data: GitHubData) -> List[SimpleDocument]:
         """Process GitHub data into indexable documents"""
         documents = []
         
         # Process pull requests
         for pr in github_data.pull_requests:
-            if pr.get('body'):  # Only index PRs with descriptions
-                doc = IndexedDocument(
+            if pr.get('body') and len(pr['body'].strip()) > 20:
+                content = self._clean_text(f"{pr['title']} {pr['body']}")
+                doc = SimpleDocument(
                     doc_id=f"github_pr_{pr['id']}",
-                    content=f"Title: {pr['title']}\n\nDescription: {pr['body']}",
+                    content=content,
                     metadata={
                         'url': pr['html_url'],
                         'state': pr['state'],
                         'created_at': pr['created_at'],
-                        'updated_at': pr['updated_at'],
-                        'additions': pr.get('additions', 0),
-                        'deletions': pr.get('deletions', 0),
-                        'changed_files': pr.get('changed_files', 0)
+                        'updated_at': pr['updated_at']
                     },
                     source='github',
                     doc_type='pr',
@@ -190,15 +171,15 @@ class SemanticIndexer:
             commit_data = commit.get('commit', {})
             message = commit_data.get('message', '')
             
-            if message and len(message.strip()) > 10:  # Only meaningful commit messages
-                doc = IndexedDocument(
+            if message and len(message.strip()) > 10:
+                content = self._clean_text(message)
+                doc = SimpleDocument(
                     doc_id=f"github_commit_{commit['sha']}",
-                    content=f"Commit message: {message}",
+                    content=content,
                     metadata={
                         'sha': commit['sha'],
                         'url': commit['html_url'],
-                        'author_date': commit_data.get('author', {}).get('date'),
-                        'stats': commit.get('stats', {})
+                        'author_date': commit_data.get('author', {}).get('date')
                     },
                     source='github',
                     doc_type='commit',
@@ -209,17 +190,16 @@ class SemanticIndexer:
         
         # Process issues
         for issue in github_data.issues:
-            if issue.get('body'):  # Only index issues with descriptions
-                doc = IndexedDocument(
+            if issue.get('body') and len(issue['body'].strip()) > 20:
+                content = self._clean_text(f"{issue['title']} {issue['body']}")
+                doc = SimpleDocument(
                     doc_id=f"github_issue_{issue['id']}",
-                    content=f"Title: {issue['title']}\n\nDescription: {issue['body']}",
+                    content=content,
                     metadata={
                         'number': issue['number'],
                         'url': issue['html_url'],
                         'state': issue['state'],
-                        'labels': [label['name'] for label in issue.get('labels', [])],
-                        'created_at': issue['created_at'],
-                        'updated_at': issue['updated_at']
+                        'created_at': issue['created_at']
                     },
                     source='github',
                     doc_type='issue',
@@ -231,7 +211,7 @@ class SemanticIndexer:
         logger.info(f"Processed {len(documents)} GitHub documents")
         return documents
     
-    def _process_jira_data(self, jira_data: JiraData) -> List[IndexedDocument]:
+    def _process_jira_data(self, jira_data: JiraData) -> List[SimpleDocument]:
         """Process Jira data into indexable documents"""
         documents = []
         
@@ -244,21 +224,20 @@ class SemanticIndexer:
             if summary or description:
                 content_parts = []
                 if summary:
-                    content_parts.append(f"Summary: {summary}")
+                    content_parts.append(summary)
                 if description:
-                    content_parts.append(f"Description: {description}")
+                    content_parts.append(description)
                 
-                doc = IndexedDocument(
+                content = self._clean_text(' '.join(content_parts))
+                
+                doc = SimpleDocument(
                     doc_id=f"jira_ticket_{ticket['key']}",
-                    content='\n\n'.join(content_parts),
+                    content=content,
                     metadata={
                         'key': ticket['key'],
                         'issue_type': fields.get('issuetype', {}).get('name'),
                         'status': fields.get('status', {}).get('name'),
-                        'priority': fields.get('priority', {}).get('name'),
-                        'created': fields.get('created'),
-                        'updated': fields.get('updated'),
-                        'resolution': fields.get('resolution', {}).get('name') if fields.get('resolution') else None
+                        'created': fields.get('created')
                     },
                     source='jira',
                     doc_type='ticket',
@@ -270,14 +249,14 @@ class SemanticIndexer:
         # Process comments
         for comment in jira_data.comments:
             body = comment.get('body', '')
-            if body and len(body.strip()) > 20:  # Only substantial comments
-                doc = IndexedDocument(
+            if body and len(body.strip()) > 20:
+                content = self._clean_text(body)
+                doc = SimpleDocument(
                     doc_id=f"jira_comment_{comment['id']}",
-                    content=f"Comment: {body}",
+                    content=content,
                     metadata={
                         'comment_id': comment['id'],
-                        'created': comment.get('created'),
-                        'updated': comment.get('updated')
+                        'created': comment.get('created')
                     },
                     source='jira',
                     doc_type='comment',
@@ -289,64 +268,52 @@ class SemanticIndexer:
         logger.info(f"Processed {len(documents)} Jira documents")
         return documents
     
-    def _convert_to_llama_documents(self, indexed_docs: List[IndexedDocument]) -> List[Document]:
-        """Convert IndexedDocument objects to LlamaIndex Document objects"""
-        llama_docs = []
+    def _clean_text(self, text: str) -> str:
+        """Clean and preprocess text"""
+        # Remove URLs
+        text = re.sub(r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', '', text)
         
-        for doc in indexed_docs:
-            # Create metadata for LlamaIndex
-            metadata = {
-                'doc_id': doc.doc_id,
-                'source': doc.source,
-                'doc_type': doc.doc_type,
-                'author': doc.author,
-                'created_at': doc.created_at,
-                **doc.metadata
-            }
-            
-            llama_doc = Document(
-                text=doc.content,
-                metadata=metadata,
-                doc_id=doc.doc_id
-            )
-            
-            llama_docs.append(llama_doc)
+        # Remove special characters but keep spaces
+        text = re.sub(r'[^a-zA-Z0-9\s]', ' ', text)
         
-        return llama_docs
-    
-    def _persist_index(self):
-        """Persist the index to disk"""
-        try:
-            self.storage_context.persist(persist_dir=self.index_dir)
-            logger.info("Index persisted successfully")
-        except Exception as e:
-            logger.error(f"Failed to persist index: {e}")
+        # Remove extra whitespace
+        text = ' '.join(text.split())
+        
+        return text.lower()
     
     async def semantic_search(self, query: str, top_k: int = 10) -> List[Dict[str, Any]]:
-        """Perform semantic search on indexed content"""
+        """Perform semantic search using TF-IDF similarity"""
         try:
-            if not self.index:
-                logger.warning("Index not initialized")
+            if not self.documents or self.tfidf_matrix is None:
+                logger.warning("No indexed documents available")
                 return []
             
-            # Create query engine
-            query_engine = self.index.as_query_engine(
-                similarity_top_k=top_k,
-                response_mode="no_text"  # We only want the source nodes
-            )
+            # Clean and vectorize query
+            clean_query = self._clean_text(query)
+            query_vector = self.vectorizer.transform([clean_query])
             
-            # Perform search
-            response = query_engine.query(query)
+            # Calculate similarities
+            similarities = cosine_similarity(query_vector, self.tfidf_matrix)[0]
             
-            # Extract results
+            # Get top results
+            top_indices = similarities.argsort()[-top_k:][::-1]
+            
             results = []
-            for node in response.source_nodes:
-                result = {
-                    'content': node.node.text,
-                    'score': node.score,
-                    'metadata': node.node.metadata
-                }
-                results.append(result)
+            for idx in top_indices:
+                if similarities[idx] > 0.1:  # Only include reasonably similar results
+                    doc = self.documents[idx]
+                    result = {
+                        'content': doc.content,
+                        'score': similarities[idx],
+                        'metadata': {
+                            **doc.metadata,
+                            'doc_id': doc.doc_id,
+                            'source': doc.source,
+                            'doc_type': doc.doc_type,
+                            'author': doc.author
+                        }
+                    }
+                    results.append(result)
             
             return results
             
@@ -375,7 +342,7 @@ class SemanticIndexer:
         
         return stats
     
-    async def find_similar_work(self, content: str, author: str, top_k: int = 5) -> List[Dict[str, Any]]:
+    async def find_similar_work(self, content: str, author: str, top_k: int = 5) -> Dict[str, List[Dict[str, Any]]]:
         """Find similar work by a specific author or others"""
         try:
             # Search for similar content
@@ -391,7 +358,6 @@ class SemanticIndexer:
                 else:
                     other_results.append(result)
             
-            # Return top results from each category
             return {
                 'similar_by_author': author_results[:top_k],
                 'similar_by_others': other_results[:top_k]

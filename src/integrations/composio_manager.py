@@ -45,26 +45,46 @@ class ComposioManager:
         await self._initialize_composio()
         
         if self.composio_available:
-            logger.info("✓ Composio integration initialized successfully")
+            logger.info("SUCCESS: Composio integration initialized successfully")
         else:
-            logger.warning("⚠ Composio not available - using direct API calls")
+            logger.warning("WARNING: Composio not available - using direct API calls")
             
         # Test connections
         await self._test_connections()
     
+    async def cleanup(self):
+        """Clean up resources, especially aiohttp sessions"""
+        if self.session and not self.session.closed:
+            await self.session.close()
+            logger.info("Composio manager session closed")
+    
     async def _initialize_composio(self):
         """Initialize Composio client"""
         try:
-            from composio_core import ComposioToolSet, App
+            from composio import ComposioToolSet, App
             
             self.composio_client = ComposioToolSet()
             
-            # Get connected accounts
-            github_app = self.composio_client.get_tools(apps=[App.GITHUB])
-            jira_app = self.composio_client.get_tools(apps=[App.JIRA])
-            slack_app = self.composio_client.get_tools(apps=[App.SLACK])
+            # Test Composio client with different API methods
+            try:
+                # Try the newer API first
+                if hasattr(self.composio_client, 'get_tools'):
+                    github_app = self.composio_client.get_tools(apps=[App.GITHUB])
+                    jira_app = self.composio_client.get_tools(apps=[App.JIRA])
+                    slack_app = self.composio_client.get_tools(apps=[App.SLACK])
+                    composio_working = github_app and jira_app and slack_app
+                elif hasattr(self.composio_client, 'get_actions'):
+                    # Alternative API method
+                    actions = self.composio_client.get_actions()
+                    composio_working = len(actions) > 0
+                else:
+                    # Just test if client is functional
+                    composio_working = self.composio_client is not None
+            except Exception as api_error:
+                logger.debug(f"Composio API test failed: {api_error}")
+                composio_working = False
             
-            if github_app and jira_app and slack_app:
+            if composio_working:
                 self.composio_available = True
                 logger.info("Composio apps connected: GitHub, Jira, Slack")
             else:
