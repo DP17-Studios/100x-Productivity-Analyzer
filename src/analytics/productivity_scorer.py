@@ -15,7 +15,7 @@ from sklearn.preprocessing import MinMaxScaler
 
 # Local imports
 from ..integrations.composio_manager import GitHubData, JiraData
-from ..semantic.indexer import SemanticIndexer
+from ..semantic.indexer import SimpleSemanticIndexer
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +63,7 @@ class ProductivityScorer:
     
     def __init__(self, config):
         self.config = config
-        self.semantic_indexer: Optional[SemanticIndexer] = None
+        self.semantic_indexer: Optional[SimpleSemanticIndexer] = None
         
         # Scoring weights (can be adjusted)
         self.weights = {
@@ -93,7 +93,7 @@ class ProductivityScorer:
             'velocity': 0.15
         }
     
-    def set_semantic_indexer(self, indexer: SemanticIndexer):
+    def set_semantic_indexer(self, indexer: SimpleSemanticIndexer):
         """Set the semantic indexer for quality analysis"""
         self.semantic_indexer = indexer
     

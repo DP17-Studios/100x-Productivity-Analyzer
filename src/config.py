@@ -51,8 +51,10 @@ class Config:
         self.slack_bot_token = os.getenv('SLACK_BOT_TOKEN', '')
         
         # Optional settings with defaults
-        self.slack_channel = os.getenv('SLACK_CHANNEL', '#productivity-reports')
-        self.organization = os.getenv('ORGANIZATION', '')
+        slack_channel_raw = os.getenv('SLACK_CHANNEL', 'productivity-reports')
+        # Ensure channel name starts with # for Slack API
+        self.slack_channel = slack_channel_raw if slack_channel_raw.startswith('#') else f'#{slack_channel_raw}'
+        self.organization = os.getenv('GITHUB_ORG', '')
         self.jira_project_key = os.getenv('JIRA_PROJECT_KEY', '')
         self.timezone = os.getenv('TIMEZONE', 'UTC')
         self.daily_report_time = os.getenv('DAILY_REPORT_TIME', '09:00')
