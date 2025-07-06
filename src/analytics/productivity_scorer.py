@@ -452,7 +452,9 @@ class ProductivityScorer:
                 score.total_score = float(normalized_totals[i][0])
         
         # Calculate percentile ranks
-        sorted_scores = sorted(total_scores, reverse=True)
+        # Get current normalized total scores
+        current_total_scores = [score.total_score for score in scores]
+        sorted_scores = sorted(current_total_scores, reverse=True)
         for score in scores:
             rank = sorted_scores.index(score.total_score)
             percentile = ((len(sorted_scores) - rank) / len(sorted_scores)) * 100

@@ -188,7 +188,7 @@ class ComposioManager:
         page = 1
         
         while True:
-            url = f'https://api.github.com/repos/{self.config.organization}/pulls'
+            url = f'https://api.github.com/repos/{self.config.organization}/{self.config.repository}/pulls'
             params = {
                 'state': 'all',
                 'sort': 'updated',
@@ -233,7 +233,7 @@ class ComposioManager:
         page = 1
         
         while True:
-            url = f'https://api.github.com/repos/{self.config.organization}/commits'
+            url = f'https://api.github.com/repos/{self.config.organization}/{self.config.repository}/commits'
             params = {
                 'since': start_date,
                 'until': end_date,
@@ -266,7 +266,7 @@ class ComposioManager:
         
         for pr in pull_requests:
             pr_number = pr['number']
-            url = f'https://api.github.com/repos/{self.config.organization}/pulls/{pr_number}/reviews'
+            url = f'https://api.github.com/repos/{self.config.organization}/{self.config.repository}/pulls/{pr_number}/reviews'
             
             async with self.session.get(
                 url,
@@ -288,7 +288,7 @@ class ComposioManager:
         page = 1
         
         while True:
-            url = f'https://api.github.com/repos/{self.config.organization}/issues'
+            url = f'https://api.github.com/repos/{self.config.organization}/{self.config.repository}/issues'
             params = {
                 'state': 'all',
                 'sort': 'updated',
