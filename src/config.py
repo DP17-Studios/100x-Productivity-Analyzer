@@ -55,6 +55,7 @@ class Config:
         # Ensure channel name starts with # for Slack API
         self.slack_channel = slack_channel_raw if slack_channel_raw.startswith('#') else f'#{slack_channel_raw}'
         self.organization = os.getenv('GITHUB_ORG', '')
+        self.repository = os.getenv('GITHUB_REPO', '')
         self.jira_project_key = os.getenv('JIRA_PROJECT_KEY', '')
         self.timezone = os.getenv('TIMEZONE', 'UTC')
         self.daily_report_time = os.getenv('DAILY_REPORT_TIME', '09:00')

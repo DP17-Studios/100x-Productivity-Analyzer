@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 Productivity Agent - GitHub/Jira/Slack Integration
 
@@ -15,14 +16,24 @@ import sys
 import asyncio
 import argparse
 import schedule
+from datetime import datetime, timedelta
 
 # Set UTF-8 encoding for Windows console
-if sys.platform == 'win32':
+if sys.platform.startswith('win'):
     import codecs
-    sys.stdout = codecs.getwriter('utf-8')(sys.stdout.detach())
-    sys.stderr = codecs.getwriter('utf-8')(sys.stderr.detach())
+    try:
+        sys.stdout = codecs.getwriter('utf-8')(sys.stdout.buffer)
+        sys.stderr = codecs.getwriter('utf-8')(sys.stderr.buffer)
+    except AttributeError:
+        pass
+    if hasattr(sys.stdout, 'reconfigure'):
+        try:
+            sys.stdout.reconfigure(encoding='utf-8')
+            sys.stderr.reconfigure(encoding='utf-8')
+        except:
+            pass
+
 import time
-from datetime import datetime, timedelta
 import pytz
 from dotenv import load_dotenv
 import logging
@@ -32,7 +43,7 @@ from rich.panel import Panel
 from rich.text import Text
 
 from src.config import Config
-from src.analytics.productivity_scorer import ProductivityScorer
+from src.analytics.productivity_scorer import ProductivityScorer, ProductivityScore
 from src.reports.summary_generator import SummaryGenerator
 from src.utils.logger import setup_logger
 from src.utils.ascii_art import ASCIIRenderer
@@ -40,9 +51,8 @@ from src.utils.ascii_art import ASCIIRenderer
 # Using TF-IDF based semantic indexer
 from src.semantic.indexer import SimpleSemanticIndexer as SemanticIndexer
 
-# Composio integration (required)
-from src.integrations.composio_manager import ComposioManager
-COMPOSIO_AVAILABLE = True
+# Composio integration
+from src.integrations.composio_manager import ComposioManager, GitHubData, JiraData
 
 # Load environment variables
 load_dotenv()
@@ -56,261 +66,271 @@ class ProductivityAgent:
     
     def __init__(self):
         self.config = Config()
-        self.composio_manager = None  # Initialize after validation
-        self.semantic_indexer = None  # Initialize after validation
-        self.productivity_scorer = None  # Initialize after validation
-        self.summary_generator = None  # Initialize after validation
-        self.ascii_renderer = ASCIIRenderer()
+        self.composio_manager = None
+        self.semantic_indexer = None
+        self.productivity_scorer = None
+        self.summary_generator = None
+        self.ascii_renderer = None
+        self.is_running = False
+        self.last_run = None
+        console.print("[blue]Productivity Agent initialized[/blue]")
         
-    async def initialize(self):
-        """Initialize all components"""
+    async def initialize(self, validate_only=False):
+        """Initialize all components and validate configuration"""
         try:
-            console.print("[bold blue]Initializing Productivity Agent...[/bold blue]")
-            
-
-            
-            # Validate configuration before initializing
-            console.print("[cyan]Validating configuration...[/cyan]")
-            validation_result = self._validate_configuration()
-            if not validation_result['valid']:
-                console.print(f"[red]Configuration Error: {validation_result['message']}[/red]")
-                console.print("[yellow]Please check your .env file and ensure all required API keys are configured.[/yellow]")
-                return False
-            
-            console.print("[green]Configuration validation passed![/green]")
-            
-            # Create components after validation passes
+            # Initialize core components
             self.composio_manager = ComposioManager(self.config)
             self.semantic_indexer = SemanticIndexer(self.config)
             self.productivity_scorer = ProductivityScorer(self.config)
             self.summary_generator = SummaryGenerator(self.config)
+            self.ascii_renderer = ASCIIRenderer()
             
-            # Initialize API connections
-            await self.composio_manager.initialize(validate_only=False)
-            console.print("[green]Composio integrations initialized[/green]")
-            
-            # Initialize semantic indexer
+            # Initialize integrations  
+            await self.composio_manager.initialize(validate_only=validate_only)
             await self.semantic_indexer.initialize()
-            console.print("[green]TF-IDF semantic indexer initialized[/green]")
+            console.print("[green]All integrations initialized[/green]")
             
-            console.print("[bold green]Agent initialization complete![/bold green]")
             return True
             
         except Exception as e:
-            logger.error(f"Failed to initialize agent: {e}")
-            console.print(f"[bold red]Initialization failed: {e}[/bold red]")
-            
-            # Provide specific guidance for common issues
-            error_str = str(e).lower()
-            if "401" in error_str and "github" in error_str:
-                console.print("\n[yellow]GitHub Token Issue Detected:[/yellow]")
-                console.print("1. Your GitHub token may be expired or invalid")
-                console.print("2. Generate a new token at: https://github.com/settings/tokens")  
-                console.print("3. Token needs 'repo', 'read:user', and 'read:org' permissions")
-                console.print("4. Update GITHUB_TOKEN in your .env file")
-            
-            raise
+            logger.error(f"Initialization failed: {e}")
+            console.print(f"[red]Initialization failed: {e}[/red]")
+            return False
     
-    def _validate_configuration(self):
-        """Validate that required API keys are configured"""
-        required_keys = {
-            'GITHUB_TOKEN': 'GitHub API token is required for accessing repository data',
-            'GITHUB_ORG': 'GitHub organization name is required',
-            'JIRA_URL': 'Jira URL is required for accessing Jira data',
-            'JIRA_EMAIL': 'Jira email is required for authentication',
-            'JIRA_API_TOKEN': 'Jira API token is required for authentication',
-            'SLACK_BOT_TOKEN': 'Slack bot token is required for posting summaries'
-        }
-        
-        missing_keys = []
-        placeholder_keys = []
-        
-        for key, description in required_keys.items():
-            value = os.getenv(key)
-            if not value:
-                missing_keys.append(f"{key} ({description})")
-            elif 'your_' in value.lower() or 'token_here' in value.lower() or 'example' in value.lower():
-                placeholder_keys.append(f"{key} (appears to be a placeholder value)")
-        
-        if missing_keys:
-            return {
-                'valid': False,
-                'message': f"Missing required environment variables: {', '.join(missing_keys)}"
-            }
-        
-        if placeholder_keys:
-            return {
-                'valid': False,
-                'message': f"Please update placeholder values: {', '.join(placeholder_keys)}"
-            }
-        
-        return {'valid': True, 'message': 'Configuration is valid'}
-    
-    async def run_daily_analysis(self):
-        """Run the daily productivity analysis"""
+    async def run_productivity_analysis(self, start_date=None, end_date=None):
+        """Run comprehensive productivity analysis"""
         try:
-            console.print("\n[bold yellow]Starting Daily Productivity Analysis...[/bold yellow]")
+            self.is_running = True
+            console.print("[yellow]🔍 Starting productivity analysis...[/yellow]")
             
-            # Calculate date range
-            end_date = datetime.now(pytz.timezone(self.config.timezone))
-            start_date = end_date - timedelta(days=self.config.lookback_days)
+            # Set default date range if not provided
+            if not end_date:
+                end_date = datetime.now(pytz.timezone(self.config.timezone))
+            if not start_date:
+                start_date = end_date - timedelta(days=self.config.lookback_days)
             
-            console.print(f"[cyan]Analyzing period: {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}[/cyan]")
+            console.print(f"[blue]📅 Analyzing data from {start_date.date()} to {end_date.date()}[/blue]")
             
-            # Collect data from all sources
+            # Step 1: Collect data from all sources
+            console.print("[cyan]📊 Collecting GitHub data...[/cyan]")
             github_data = await self.composio_manager.fetch_github_data(start_date, end_date)
+            
+            console.print("[cyan]🎫 Collecting Jira data...[/cyan]")
             jira_data = await self.composio_manager.fetch_jira_data(start_date, end_date)
             
-            # Index the data semantically
+            # Step 2: Index content for semantic analysis
+            console.print("[cyan]🧠 Performing semantic analysis...[/cyan]")
             await self.semantic_indexer.index_data(github_data, jira_data)
             
-            # Calculate productivity scores
-            scores = await self.productivity_scorer.calculate_scores(
-                github_data, jira_data, start_date, end_date
-            )
+            # Step 3: Calculate productivity scores
+            console.print("[cyan]🎯 Calculating productivity scores...[/cyan]")
+            scores = await self.productivity_scorer.calculate_scores(github_data, jira_data, start_date, end_date)
             
-            # Generate and display summary
+            # Step 4: Generate summary and insights
+            console.print("[cyan]📝 Generating executive summary...[/cyan]")
             summary = await self.summary_generator.generate_summary(
                 scores, github_data, jira_data
             )
             
-            # Display ASCII output
-            self.display_console_output(scores, summary)
+            # Step 5: Display results
+            self.display_results(scores, summary)
             
-            # Post to Slack
-            await self.post_to_slack(scores[:3], summary)
+            # Step 6: Post to Slack if configured
+            if hasattr(self.config, 'slack_bot_token') and self.config.slack_bot_token:
+                console.print("[cyan]📢 Posting results to Slack...[/cyan]")
+                await self.post_results_to_slack(scores, summary)
             
-            console.print("[bold green]Daily analysis complete![/bold green]")
+            self.last_run = datetime.now()
+            self.is_running = False
+            
+            console.print("[bold green]✅ Analysis completed successfully![/bold green]")
+            
+            # Return analysis results
+            return {
+                'timestamp': datetime.now().isoformat(),
+                'period': f"{start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}",
+                'scores': self._serialize_scores(scores),
+                'summary': summary,
+                'github_data': {
+                    'total_prs': len(github_data.pull_requests),
+                    'total_commits': len(github_data.commits),
+                    'total_reviews': len(github_data.reviews)
+                },
+                'jira_data': {
+                    'total_issues': len(jira_data.tickets),
+                    'completed_issues': len([t for t in jira_data.tickets if t.get('status', '').lower() == 'done'])
+                }
+            }
             
         except Exception as e:
-            logger.error(f"Daily analysis failed: {e}")
-            console.print(f"[bold red]Daily analysis failed: {e}[/bold red]")
+            self.is_running = False
+            logger.error(f"Analysis failed: {e}")
+            console.print(f"[red]❌ Analysis failed: {e}[/red]")
+            raise
     
-    def display_console_output(self, scores, summary):
-        """Display results in ASCII format to console"""
+    def _serialize_scores(self, scores):
+        """Convert ProductivityScore objects to serializable format"""
+        scores_data = []
+        for score in scores:
+            scores_data.append({
+                'engineer': score.engineer,
+                'total_score': round(score.total_score, 2),
+                'github_score': round(score.github_score, 2),
+                'jira_score': round(score.jira_score, 2),
+                'quality_score': round(score.quality_score, 2),
+                'collaboration_score': round(score.collaboration_score, 2),
+                'percentile_rank': round(score.percentile_rank, 2),
+                'github_stats': {
+                    'prs_created': score.github_stats.prs_created,
+                    'prs_reviewed': score.github_stats.prs_reviewed,
+                    'commits_made': score.github_stats.commits_made,
+                    'lines_added': score.github_stats.lines_added,
+                    'lines_removed': score.github_stats.lines_deleted
+                },
+                'jira_stats': {
+                    'tickets_completed': score.jira_stats.tickets_completed,
+                    'tickets_in_progress': score.jira_stats.tickets_in_progress,
+                    'story_points': score.jira_stats.story_points_completed,
+                    'avg_completion_time': score.jira_stats.time_to_completion
+                }
+            })
+        return scores_data
+    
+    def display_results(self, scores, summary):
+        """Display results in console with ASCII art"""
         console.print("\n" + "="*80)
-        console.print(self.ascii_renderer.create_title("DAILY PRODUCTIVITY REPORT"))
+        console.print("[bold blue]🏆 PRODUCTIVITY ANALYSIS RESULTS 🏆[/bold blue]")
         console.print("="*80)
         
-        # Top contributors table
-        table = Table(title="Top Contributors")
-        table.add_column("Rank", style="cyan", no_wrap=True)
-        table.add_column("Engineer", style="magenta")
-        table.add_column("Score", style="green")
-        table.add_column("PRs", style="blue")
-        table.add_column("Commits", style="yellow")
-        table.add_column("Tickets", style="red")
+        if not scores:
+            console.print("[yellow]⚠️  No productivity data found for the specified period.[/yellow]")
+            return
         
-        for i, score_data in enumerate(scores[:10], 1):
+        # Display statistics summary
+        console.print(f"\n[bold cyan]📈 Analysis Summary[/bold cyan]")
+        console.print(f"👥 Engineers analyzed: {len(scores)}")
+        console.print(f"📊 Average team score: {sum(s.total_score for s in scores) / len(scores):.1f}")
+        console.print(f"⭐ Top performer: {scores[0].engineer} ({scores[0].total_score:.1f})")
+        
+        # Display top contributors table
+        table = Table(title="🏅 Top Contributors", show_header=True, header_style="bold magenta")
+        table.add_column("Rank", justify="center", style="cyan", width=6)
+        table.add_column("Engineer", justify="left", style="green", width=20)
+        table.add_column("Score", justify="right", style="yellow", width=8)
+        table.add_column("GitHub", justify="center", style="blue", width=8)
+        table.add_column("Jira", justify="center", style="red", width=8)
+        table.add_column("Quality", justify="center", style="magenta", width=8)
+        table.add_column("Collab", justify="center", style="cyan", width=8)
+        
+        for i, score in enumerate(scores[:self.config.max_contributors]):
+            rank_emoji = ["🥇", "🥈", "🥉"][i] if i < 3 else f"#{i+1}"
             table.add_row(
-                str(i),
-                score_data.engineer,
-                f"{score_data.total_score:.2f}",
-                str(score_data.github_stats.prs_created),
-                str(score_data.github_stats.commits_made),
-                str(score_data.jira_stats.tickets_completed)
+                rank_emoji,
+                score.engineer,
+                f"{score.total_score:.1f}",
+                f"{score.github_score:.1f}",
+                f"{score.jira_score:.1f}",
+                f"{score.quality_score:.1f}",
+                f"{score.collaboration_score:.1f}"
             )
         
+        console.print("")
         console.print(table)
         
-        # Summary panel
-        summary_panel = Panel(
-            summary['executive_summary'],
-            title="Executive Summary",
-            border_style="blue"
-        )
-        console.print(summary_panel)
+        # Display executive summary
+        if summary and summary.get('executive_summary'):
+            console.print("\n[bold green]📋 Executive Summary[/bold green]")
+            console.print(Panel(summary['executive_summary'], border_style="green", padding=(1, 2)))
+        
+        # Display ASCII art for top performer
+        if scores:
+            top_performer = scores[0]
+            ascii_art = self.ascii_renderer.create_banner(f"🎉 CHAMPION: {top_performer.engineer} 🎉", '⭐', 80)
+            console.print(f"\n[bold yellow]{ascii_art}[/bold yellow]")
         
         console.print("\n" + "="*80)
-    
-    async def post_to_slack(self, top_contributors, summary):
-        """Post top 3 contributors to Slack"""
+        
+    async def post_results_to_slack(self, scores, summary):
+        """Post results to Slack channel"""
         try:
-            message = self.summary_generator.format_slack_message(top_contributors, summary)
+            if not scores:
+                return
+            
+            top_3 = scores[:3]
+            message = f"🏆 **Daily Productivity Report** ({datetime.now().strftime('%Y-%m-%d')})\n\n"
+            
+            for i, score in enumerate(top_3):
+                emoji = ["🥇", "🥈", "🥉"][i]
+                message += f"{emoji} **{score.engineer}** - Score: {score.total_score:.1f}\n"
+            
+            if summary and summary.get('executive_summary'):
+                message += f"\n📋 **Summary:** {summary['executive_summary'][:200]}..."
+            
             await self.composio_manager.post_to_slack(message)
-            console.print("[green]Posted summary to Slack[/green]")
+            console.print("[green]✅ Results posted to Slack successfully[/green]")
+            
         except Exception as e:
             logger.error(f"Failed to post to Slack: {e}")
-            console.print(f"[red]Slack posting failed: {e}[/red]")
+            console.print(f"[red]❌ Failed to post to Slack: {e}[/red]")
     
-    def schedule_daily_run(self):
-        """Schedule the daily analysis"""
-        schedule.every().day.at(self.config.daily_report_time).do(
-            lambda: asyncio.create_task(self.run_daily_analysis())
-        )
-        
-        console.print(f"[green]Scheduled daily reports at {self.config.daily_report_time}[/green]")
-    
-    async def run_forever(self):
-        """Run the agent continuously"""
-        console.print("[bold green]Agent running continuously...[/bold green]")
-        console.print(f"[cyan]Next scheduled run: {self.config.daily_report_time}[/cyan]")
-        console.print("[yellow]Press Ctrl+C to stop[/yellow]")
-        console.print("[dim]Tip: Use 'python main.py --run-now' to run immediately[/dim]\n")
-        
-        while True:
-            schedule.run_pending()
-            await asyncio.sleep(60)  # Check every minute
-
     async def cleanup(self):
         """Clean up resources"""
         if self.composio_manager:
             await self.composio_manager.cleanup()
-        console.print("[green]Cleanup completed[/green]")
+        console.print("[blue]🧹 Agent cleanup completed[/blue]")
 
-async def main():
-    """Main entry point"""
-    parser = argparse.ArgumentParser(description='Productivity Agent - GitHub/Jira/Slack Integration')
-    parser.add_argument('--run-now', action='store_true', help='Run analysis immediately instead of scheduling')
-    parser.add_argument('--schedule-time', type=str, help='Override daily report time (HH:MM format)')
+def main():
+    """Main function"""
+    parser = argparse.ArgumentParser(description='Productivity Agent - Console & Scheduled Modes')
+    parser.add_argument('--mode', choices=['console', 'scheduled'], 
+                       default='console', help='Run mode')
+    parser.add_argument('--schedule-time', default='09:00', 
+                       help='Daily schedule time (HH:MM)')
+    
     args = parser.parse_args()
     
-    console.print("[bold blue]Productivity Agent v2.0 - Unified Requirements[/bold blue]\n")
+    # Display banner
+    console.print("\n[bold blue]🚀 Productivity Agent v3.0[/bold blue]")
+    console.print("[dim]GitHub, Jira & Slack Integration with TF-IDF Analytics[/dim]\n")
     
-    # Show feature availability
-    console.print("[green]Composio integration available[/green]")
-    
-    console.print("[green]TF-IDF semantic analysis available[/green]")
-    
-    console.print()
-    
-    try:
-        agent = ProductivityAgent()
-        initialization_success = await agent.initialize()
-        
-        if not initialization_success:
-            console.print("\n[bold yellow]Setup Instructions:[/bold yellow]")
-            console.print("1. Copy .env.example to .env: [blue]copy .env.example .env[/blue]")
-            console.print("2. Edit .env file with your actual API keys")
-            console.print("3. Run the agent again: [blue]python main.py[/blue]")
-            console.print("\n[cyan]For detailed setup instructions, see README.md[/cyan]")
-            sys.exit(1)
-        
-        # Override schedule time if provided
-        if args.schedule_time:
-            agent.config.daily_report_time = args.schedule_time
-        
-        # Check if we should run immediately or just schedule
-        if args.run_now:
-            await agent.run_daily_analysis()
-        else:
-            agent.schedule_daily_run()
-            await agent.run_forever()
-            
-    except KeyboardInterrupt:
-        console.print("\n[yellow]Shutting down gracefully...[/yellow]")
-        if 'agent' in locals():
+    if args.mode == 'console':
+        # Run single analysis in console mode
+        async def run_console():
+            agent = ProductivityAgent()
+            if await agent.initialize():
+                await agent.run_productivity_analysis()
             await agent.cleanup()
-    except Exception as e:
-        console.print(f"\n[bold red]Error: {e}[/bold red]")
-        if 'agent' in locals():
-            await agent.cleanup()
-        sys.exit(1)
-    finally:
-        if 'agent' in locals():
-            await agent.cleanup()
+        
+        console.print("[green]🔥 Running productivity analysis...[/green]")
+        asyncio.run(run_console())
+        
+    elif args.mode == 'scheduled':
+        # Run scheduled analysis
+        async def run_scheduled():
+            agent = ProductivityAgent()
+            if await agent.initialize():
+                await agent.run_productivity_analysis()
+                await agent.cleanup()
+        
+        def scheduled_job():
+            console.print(f"[yellow]⏰ Running scheduled analysis at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}[/yellow]")
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(run_scheduled())
+            loop.close()
+        
+        schedule.every().day.at(args.schedule_time).do(scheduled_job)
+        
+        console.print(f"[green]⏰ Productivity Agent scheduled to run daily at {args.schedule_time}[/green]")
+        console.print(f"[yellow]⏭️  Next run: {args.schedule_time} (press Ctrl+C to stop)[/yellow]")
 
+        
+        try:
+            while True:
+                schedule.run_pending()
+                time.sleep(60)
+        except KeyboardInterrupt:
+            console.print("\n[yellow]👋 Scheduler stopped gracefully[/yellow]")
 
-
-if __name__ == "__main__":
-    asyncio.run(main())
+if __name__ == '__main__':
+    main()
