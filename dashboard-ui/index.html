@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>100x Engineer Productivity Dashboard</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="styles-update.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <!-- Chart.js for graphs -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- D3.js for heatmap -->
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h1>100x Engineer</h1>
+                <p>Productivity Analyzer</p>
+            </div>
+            <nav class="sidebar-nav">
+                <ul>
+                    <li class="active"><a href="#dashboard"><i class="fas fa-chart-line"></i> Dashboard</a></li>
+                    <li><a href="#github"><i class="fab fa-github"></i> GitHub</a></li>
+                    <li><a href="#jira"><i class="fas fa-ticket-alt"></i> Jira</a></li>
+                    <li><a href="#settings"><i class="fas fa-cog"></i> Settings</a></li>
+                </ul>
+            </nav>
+            <div class="sidebar-footer">
+                <p>v3.0</p>
+                <p>GitHub, Jira & Slack Integration</p>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="main-header">
+                <div class="header-left">
+                    <button id="sidebar-toggle" class="sidebar-toggle">
+                        <i class="fas fa-bars"></i>
+                    </button>
+                    <h2 id="page-title">Dashboard</h2>
+                </div>
+                <div class="header-right">
+                    <div class="date-range-picker">
+                        <label for="start-date">From:</label>
+                        <input type="date" id="start-date" name="start-date">
+                        <label for="end-date">To:</label>
+                        <input type="date" id="end-date" name="end-date">
+                        <button id="run-analysis" class="btn btn-primary">Run Analysis</button>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Dashboard Content -->
+            <div class="dashboard-content">
+                <!-- Status Card -->
+                <div class="status-card" id="status-card">
+                    <div class="status-icon">
+                        <i class="fas fa-check-circle"></i>
+                    </div>
+                    <div class="status-text">
+                        <h3>Ready to analyze</h3>
+                        <p>Set date range and click "Run Analysis"</p>
+                    </div>
+                </div>
+
+                <!-- Analysis Summary Section -->
+                <section class="dashboard-section" id="summary-section" style="display: none;">
+                    <h3 class="section-title">Analysis Summary</h3>
+                    <div class="summary-stats">
+                        <div class="stat-card">
+                            <div class="stat-icon"><i class="fas fa-users"></i></div>
+                            <div class="stat-info">
+                                <h4>Engineers Analyzed</h4>
+                                <p id="engineers-count">0</p>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon"><i class="fas fa-chart-simple"></i></div>
+                            <div class="stat-info">
+                                <h4>Average Team Score</h4>
+                                <p id="avg-team-score">0.0</p>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon"><i class="fas fa-trophy"></i></div>
+                            <div class="stat-info">
+                                <h4>Top Performer</h4>
+                                <p id="top-performer">-</p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Top Contributors Section -->
+                <section class="dashboard-section" id="contributors-section" style="display: none;">
+                    <h3 class="section-title">Top Contributors</h3>
+                    <div class="table-container">
+                        <table class="data-table" id="contributors-table">
+                            <thead>
+                                <tr>
+                                    <th>Rank</th>
+                                    <th>Engineer</th>
+                                    <th>Score</th>
+                                    <th>GitHub</th>
+                                    <th>Jira</th>
+                                    <th>Quality</th>
+                                    <th>Collab</th>
+                                </tr>
+                            </thead>
+                            <tbody id="contributors-table-body">
+                                <!-- Table rows will be populated by JavaScript -->
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- Executive Summary Section -->
+                <section class="dashboard-section" id="executive-summary-section" style="display: none;">
+                    <h3 class="section-title">Executive Summary</h3>
+                    <div class="summary-panel" id="executive-summary-panel">
+                        <!-- Summary text will be populated by JavaScript -->
+                    </div>
+                </section>
+
+                <!-- GitHub Stats Section -->
+                <section class="dashboard-section" id="github-stats-section" style="display: none;">
+                    <h3 class="section-title">GitHub Activity</h3>
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-icon"><i class="fas fa-code-pull-request"></i></div>
+                            <div class="stat-info">
+                                <h4>Total PRs</h4>
+                                <p id="total-prs">0</p>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon"><i class="fas fa-code-commit"></i></div>
+                            <div class="stat-info">
+                                <h4>Total Commits</h4>
+                                <p id="total-commits">0</p>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon"><i class="fas fa-code-branch"></i></div>
+                            <div class="stat-info">
+                                <h4>Total Reviews</h4>
+                                <p id="total-reviews">0</p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Jira Stats Section -->
+                <section class="dashboard-section" id="jira-stats-section" style="display: none;">
+                    <h3 class="section-title">Jira Activity</h3>
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-icon"><i class="fas fa-tasks"></i></div>
+                            <div class="stat-info">
+                                <h4>Total Issues</h4>
+                                <p id="total-issues">0</p>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon"><i class="fas fa-check-double"></i></div>
+                            <div class="stat-info">
+                                <h4>Completed Issues</h4>
+                                <p id="completed-issues">0</p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Performance Graphs Section -->
+                <section class="dashboard-section" id="performance-graphs-section" style="display: none;">
+                    <h3 class="section-title">Performance Metrics</h3>
+                    <div class="graphs-container">
+                        <div class="graph-card">
+                            <h4>Score Distribution</h4>
+                            <canvas id="score-distribution-chart"></canvas>
+                        </div>
+                        <div class="graph-card">
+                            <h4>GitHub vs Jira Performance</h4>
+                            <canvas id="github-jira-chart"></canvas>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Activity Heatmap Section -->
+                <section class="dashboard-section" id="activity-heatmap-section" style="display: none;">
+                    <h3 class="section-title">Engineer Activity Heatmap</h3>
+                    <div class="heatmap-container">
+                        <div id="activity-heatmap"></div>
+                    </div>
+                </section>
+
+                <!-- Champion Banner Section -->
+                <section class="dashboard-section" id="champion-section" style="display: none;">
+                    <div class="champion-banner">
+                        <div class="champion-stars">***</div>
+                        <h2 class="champion-title">CHAMPION</h2>
+                        <h3 id="champion-name">John Doe</h3>
+                        <div class="champion-stars">***</div>
+                    </div>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loading-overlay">
+        <div class="spinner"></div>
+        <p>Running analysis...</p>
+    </div>
+
+    <script src="script.js"></script>
+    <script src="script-update.js"></script>
+</body>
+</html>
