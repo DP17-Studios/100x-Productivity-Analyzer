@@ -1,0 +1,36 @@
+run = "cd 100x-Productivity-Analyzer && python main.py"
+entrypoint = "main.py"
+
+# Environment variables
+[env]
+PYTHONPATH = "${REPL_HOME}/100x-Productivity-Analyzer"
+
+# Package manager
+[packager]
+language = "python3"
+
+[packager.features]
+enabledForHosting = true
+packageSearch = true
+guessImports = true
+
+# UPM
+[languages.python3]
+pattern = "**/*.py"
+syntax = "python"
+
+[languages.python3.languageServer]
+start = ["pylsp"]
+
+# Nix
+[nix]
+channel = "stable-22_11"
+
+# Interpreter
+[interpreter]
+command = ["python3"]
+
+# Ports
+[[ports]]
+localPort = 8081
+externalPort = 80
