@@ -1,0 +1,447 @@
+/* 100x Engineer Productivity Dashboard Styles */
+
+:root {
+    --primary-color: #4a6cf7;
+    --secondary-color: #6c757d;
+    --success-color: #28a745;
+    --info-color: #17a2b8;
+    --warning-color: #ffc107;
+    --danger-color: #dc3545;
+    --light-color: #f8f9fa;
+    --dark-color: #343a40;
+    --body-bg: #f5f7fb;
+    --sidebar-bg: #2c3e50;
+    --card-bg: #ffffff;
+    --shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    --border-radius: 8px;
+    --font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+/* Reset and Base Styles */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: var(--font-family);
+    background-color: var(--body-bg);
+    color: var(--dark-color);
+    line-height: 1.6;
+}
+
+a {
+    text-decoration: none;
+    color: inherit;
+}
+
+ul {
+    list-style: none;
+}
+
+/* Layout */
+.app-container {
+    display: flex;
+    min-height: 100vh;
+}
+
+/* Sidebar */
+.sidebar {
+    width: 250px;
+    background-color: var(--sidebar-bg);
+    color: white;
+    display: flex;
+    flex-direction: column;
+    transition: all 0.3s ease;
+}
+
+.sidebar-header {
+    padding: 20px;
+    text-align: center;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.sidebar-header h1 {
+    font-size: 1.5rem;
+    margin-bottom: 5px;
+}
+
+.sidebar-nav {
+    flex: 1;
+    padding: 20px 0;
+}
+
+.sidebar-nav ul li {
+    margin-bottom: 5px;
+}
+
+.sidebar-nav a {
+    display: flex;
+    align-items: center;
+    padding: 12px 20px;
+    transition: all 0.2s ease;
+}
+
+.sidebar-nav a:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+.sidebar-nav a i {
+    margin-right: 10px;
+    width: 20px;
+    text-align: center;
+}
+
+.sidebar-footer {
+    padding: 15px;
+    text-align: center;
+    font-size: 0.8rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Main Content */
+.main-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow-x: hidden;
+}
+
+.main-header {
+    height: 70px;
+    background-color: var(--card-bg);
+    box-shadow: var(--shadow);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 20px;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.header-left {
+    display: flex;
+    align-items: center;
+}
+
+.sidebar-toggle {
+    background: none;
+    border: none;
+    color: var(--dark-color);
+    font-size: 1.2rem;
+    cursor: pointer;
+    margin-right: 15px;
+    display: none;
+}
+
+.header-right {
+    display: flex;
+    align-items: center;
+}
+
+.date-range-picker {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.date-range-picker input {
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: var(--border-radius);
+}
+
+/* Dashboard Content */
+.dashboard-content {
+    padding: 20px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+/* Status Card */
+.status-card {
+    display: flex;
+    align-items: center;
+    background-color: var(--card-bg);
+    padding: 20px;
+    border-radius: var(--border-radius);
+    box-shadow: var(--shadow);
+}
+
+.status-icon {
+    font-size: 2rem;
+    color: var(--primary-color);
+    margin-right: 20px;
+}
+
+.status-text h3 {
+    font-size: 1.2rem;
+    margin-bottom: 5px;
+}
+
+.status-text p {
+    color: var(--secondary-color);
+}
+
+/* Dashboard Sections */
+.dashboard-section {
+    background-color: var(--card-bg);
+    border-radius: var(--border-radius);
+    box-shadow: var(--shadow);
+    padding: 20px;
+}
+
+.section-title {
+    margin-bottom: 20px;
+    font-size: 1.2rem;
+    color: var(--dark-color);
+    border-bottom: 1px solid #eee;
+    padding-bottom: 10px;
+}
+
+/* Summary Stats */
+.summary-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 20px;
+}
+
+.stat-card {
+    display: flex;
+    align-items: center;
+    padding: 15px;
+    background-color: var(--light-color);
+    border-radius: var(--border-radius);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.stat-icon {
+    font-size: 1.5rem;
+    color: var(--primary-color);
+    margin-right: 15px;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: rgba(74, 108, 247, 0.1);
+    border-radius: 50%;
+}
+
+.stat-info h4 {
+    font-size: 0.9rem;
+    color: var(--secondary-color);
+    margin-bottom: 5px;
+}
+
+.stat-info p {
+    font-size: 1.2rem;
+    font-weight: 600;
+}
+
+/* Stats Grid */
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 20px;
+}
+
+/* Table Styles */
+.table-container {
+    overflow-x: auto;
+}
+
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.data-table th, 
+.data-table td {
+    padding: 12px 15px;
+    text-align: left;
+    border-bottom: 1px solid #eee;
+}
+
+.data-table th {
+    background-color: var(--light-color);
+    font-weight: 600;
+}
+
+.data-table tbody tr:hover {
+    background-color: rgba(0, 0, 0, 0.02);
+}
+
+/* Summary Panel */
+.summary-panel {
+    background-color: var(--light-color);
+    padding: 20px;
+    border-radius: var(--border-radius);
+    line-height: 1.7;
+}
+
+/* Champion Banner */
+.champion-banner {
+    text-align: center;
+    padding: 30px;
+    background: linear-gradient(135deg, #4a6cf7, #6c63ff);
+    color: white;
+    border-radius: var(--border-radius);
+    margin-top: 20px;
+}
+
+.champion-stars {
+    font-size: 1.5rem;
+    margin: 10px 0;
+}
+
+.champion-title {
+    font-size: 2rem;
+    letter-spacing: 3px;
+    margin-bottom: 10px;
+}
+
+/* Loading Overlay */
+.loading-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.7);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    color: white;
+    display: none;
+}
+
+.spinner {
+    width: 50px;
+    height: 50px;
+    border: 5px solid rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+    border-top-color: white;
+    animation: spin 1s ease-in-out infinite;
+    margin-bottom: 20px;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* Buttons */
+.btn {
+    padding: 8px 16px;
+    border-radius: var(--border-radius);
+    border: none;
+    cursor: pointer;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+.btn-primary {
+    background-color: var(--primary-color);
+    color: white;
+}
+
+.btn-primary:hover {
+    background-color: #3a5bd9;
+}
+
+/* Responsive Design */
+@media (max-width: 992px) {
+    .sidebar {
+        width: 200px;
+    }
+}
+
+@media (max-width: 768px) {
+    .app-container {
+        flex-direction: column;
+    }
+    
+    .sidebar {
+        width: 100%;
+        position: fixed;
+        top: 0;
+        left: -100%;
+        height: 100%;
+        z-index: 100;
+    }
+    
+    .sidebar.active {
+        left: 0;
+    }
+    
+    .main-content {
+        margin-left: 0;
+    }
+    
+    .sidebar-toggle {
+        display: block;
+    }
+    
+    .date-range-picker {
+        flex-wrap: wrap;
+    }
+    
+    .summary-stats,
+    .stats-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Graph and Chart Styles */
+.graphs-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+    gap: 20px;
+}
+
+.graph-card {
+    background-color: var(--card-bg);
+    border-radius: var(--border-radius);
+    padding: 15px;
+    box-shadow: var(--shadow);
+    height: 350px;
+}
+
+.graph-card h4 {
+    margin-bottom: 15px;
+    text-align: center;
+}
+
+/* Heatmap Styles */
+.heatmap-container {
+    height: 400px;
+    overflow-y: auto;
+}
+
+#activity-heatmap {
+    width: 100%;
+}
+
+/* Dark Mode Support */
+@media (prefers-color-scheme: dark) {
+    :root {
+        --body-bg: #1a1a1a;
+        --card-bg: #2a2a2a;
+        --light-color: #333333;
+        --dark-color: #f0f0f0;
+    }
+    
+    .data-table th {
+        background-color: #333;
+    }
+    
+    .data-table tbody tr:hover {
+        background-color: rgba(255, 255, 255, 0.05);
+    }
+}
