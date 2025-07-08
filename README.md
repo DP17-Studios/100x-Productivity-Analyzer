@@ -29,7 +29,7 @@ A comprehensive productivity monitoring and analysis system that integrates with
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/DP17-Studios/100x-Engineer-Analyzer
+   git clone https://github.com/DP17-Studios/100x-Productivity-Analyzer
    cd 100x
    ```
 
