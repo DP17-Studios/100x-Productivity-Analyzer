@@ -101,7 +101,7 @@ class ProductivityAgent:
         """Run comprehensive productivity analysis"""
         try:
             self.is_running = True
-            console.print("[yellow]🔍 Starting productivity analysis...[/yellow]")
+            console.print("[yellow]Starting productivity analysis...[/yellow]")
             
             # Set default date range if not provided
             if not end_date:
@@ -109,25 +109,25 @@ class ProductivityAgent:
             if not start_date:
                 start_date = end_date - timedelta(days=self.config.lookback_days)
             
-            console.print(f"[blue]📅 Analyzing data from {start_date.date()} to {end_date.date()}[/blue]")
+            console.print(f"[blue]Analyzing data from {start_date.date()} to {end_date.date()}[/blue]")
             
             # Step 1: Collect data from all sources
-            console.print("[cyan]📊 Collecting GitHub data...[/cyan]")
+            console.print("[cyan]Collecting GitHub data...[/cyan]")
             github_data = await self.composio_manager.fetch_github_data(start_date, end_date)
             
-            console.print("[cyan]🎫 Collecting Jira data...[/cyan]")
+            console.print("[cyan]Collecting Jira data...[/cyan]")
             jira_data = await self.composio_manager.fetch_jira_data(start_date, end_date)
             
             # Step 2: Index content for semantic analysis
-            console.print("[cyan]🧠 Performing semantic analysis...[/cyan]")
+            console.print("[cyan]Performing semantic analysis...[/cyan]")
             await self.semantic_indexer.index_data(github_data, jira_data)
             
             # Step 3: Calculate productivity scores
-            console.print("[cyan]🎯 Calculating productivity scores...[/cyan]")
+            console.print("[cyan]Calculating productivity scores...[/cyan]")
             scores = await self.productivity_scorer.calculate_scores(github_data, jira_data, start_date, end_date)
             
             # Step 4: Generate summary and insights
-            console.print("[cyan]📝 Generating executive summary...[/cyan]")
+            console.print("[cyan]Generating executive summary...[/cyan]")
             summary = await self.summary_generator.generate_summary(
                 scores, github_data, jira_data
             )
@@ -137,20 +137,20 @@ class ProductivityAgent:
             
             # Step 6: Post to Slack if configured
             if hasattr(self.config, 'slack_bot_token') and self.config.slack_bot_token:
-                console.print("[cyan]📢 Posting results to Slack...[/cyan]")
+                console.print("[cyan]Posting results to Slack...[/cyan]")
                 await self.post_results_to_slack(scores, summary)
             
             self.last_run = datetime.now()
             self.is_running = False
             
-            console.print("[bold green]✅ Analysis completed successfully![/bold green]")
+            console.print("[bold green]Analysis completed successfully![/bold green]")
             
             # Return analysis results
             return {
                 'timestamp': datetime.now().isoformat(),
                 'period': f"{start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}",
                 'scores': self._serialize_scores(scores),
-                'summary': summary,
+                'summary': self._serialize_summary(summary),
                 'github_data': {
                     'total_prs': len(github_data.pull_requests),
                     'total_commits': len(github_data.commits),
@@ -165,7 +165,7 @@ class ProductivityAgent:
         except Exception as e:
             self.is_running = False
             logger.error(f"Analysis failed: {e}")
-            console.print(f"[red]❌ Analysis failed: {e}[/red]")
+            console.print(f"[red]Analysis failed: {e}[/red]")
             raise
     
     def _serialize_scores(self, scores):
@@ -196,24 +196,52 @@ class ProductivityAgent:
             })
         return scores_data
     
+    def _serialize_summary(self, summary):
+        """Convert summary with TeamSummary objects to serializable format"""
+        if not summary:
+            return {}
+            
+        serialized = {}
+        for key, value in summary.items():
+            if key == 'team_stats' and hasattr(value, '__dict__'):
+                # Convert TeamSummary object to dictionary
+                serialized[key] = {
+                    'total_engineers': value.total_engineers,
+                    'active_engineers': value.active_engineers,
+                    'total_prs': value.total_prs,
+                    'total_commits': value.total_commits,
+                    'total_tickets': value.total_tickets,
+                    'average_score': value.average_score,
+                    'productivity_trend': value.productivity_trend,
+                    'top_areas': value.top_areas,
+                    'improvement_areas': value.improvement_areas
+                }
+            elif key == 'top_performers':
+                # Handle list of ProductivityScore objects
+                serialized[key] = self._serialize_scores(value)
+            else:
+                serialized[key] = value
+                
+        return serialized
+    
     def display_results(self, scores, summary):
         """Display results in console with ASCII art"""
         console.print("\n" + "="*80)
-        console.print("[bold blue]🏆 PRODUCTIVITY ANALYSIS RESULTS 🏆[/bold blue]")
+        console.print("[bold blue]PRODUCTIVITY ANALYSIS RESULTS[/bold blue]")
         console.print("="*80)
         
         if not scores:
-            console.print("[yellow]⚠️  No productivity data found for the specified period.[/yellow]")
+            console.print("[yellow]No productivity data found for the specified period.[/yellow]")
             return
         
         # Display statistics summary
-        console.print(f"\n[bold cyan]📈 Analysis Summary[/bold cyan]")
-        console.print(f"👥 Engineers analyzed: {len(scores)}")
-        console.print(f"📊 Average team score: {sum(s.total_score for s in scores) / len(scores):.1f}")
-        console.print(f"⭐ Top performer: {scores[0].engineer} ({scores[0].total_score:.1f})")
+        console.print(f"\n[bold cyan]Analysis Summary[/bold cyan]")
+        console.print(f"Engineers analyzed: {len(scores)}")
+        console.print(f"Average team score: {sum(s.total_score for s in scores) / len(scores):.1f}")
+        console.print(f"Top performer: {scores[0].engineer} ({scores[0].total_score:.1f})")
         
         # Display top contributors table
-        table = Table(title="🏅 Top Contributors", show_header=True, header_style="bold magenta")
+        table = Table(title="Top Contributors", show_header=True, header_style="bold magenta")
         table.add_column("Rank", justify="center", style="cyan", width=6)
         table.add_column("Engineer", justify="left", style="green", width=20)
         table.add_column("Score", justify="right", style="yellow", width=8)
@@ -223,7 +251,7 @@ class ProductivityAgent:
         table.add_column("Collab", justify="center", style="cyan", width=8)
         
         for i, score in enumerate(scores[:self.config.max_contributors]):
-            rank_emoji = ["🥇", "🥈", "🥉"][i] if i < 3 else f"#{i+1}"
+            rank_emoji = ["#1", "#2", "#3"][i] if i < 3 else f"#{i+1}"
             table.add_row(
                 rank_emoji,
                 score.engineer,
@@ -239,13 +267,13 @@ class ProductivityAgent:
         
         # Display executive summary
         if summary and summary.get('executive_summary'):
-            console.print("\n[bold green]📋 Executive Summary[/bold green]")
+            console.print("\n[bold green]Executive Summary[/bold green]")
             console.print(Panel(summary['executive_summary'], border_style="green", padding=(1, 2)))
         
         # Display ASCII art for top performer
         if scores:
             top_performer = scores[0]
-            ascii_art = self.ascii_renderer.create_banner(f"🎉 CHAMPION: {top_performer.engineer} 🎉", '⭐', 80)
+            ascii_art = self.ascii_renderer.create_banner(f"CHAMPION: {top_performer.engineer}", '*', 80)
             console.print(f"\n[bold yellow]{ascii_art}[/bold yellow]")
         
         console.print("\n" + "="*80)
@@ -257,27 +285,27 @@ class ProductivityAgent:
                 return
             
             top_3 = scores[:3]
-            message = f"🏆 **Daily Productivity Report** ({datetime.now().strftime('%Y-%m-%d')})\n\n"
+            message = f"Daily Productivity Report ({datetime.now().strftime('%Y-%m-%d')})\n\n"
             
             for i, score in enumerate(top_3):
-                emoji = ["🥇", "🥈", "🥉"][i]
-                message += f"{emoji} **{score.engineer}** - Score: {score.total_score:.1f}\n"
+                emoji = ["#1", "#2", "#3"][i]
+                message += f"{emoji} {score.engineer} - Score: {score.total_score:.1f}\n"
             
             if summary and summary.get('executive_summary'):
-                message += f"\n📋 **Summary:** {summary['executive_summary'][:200]}..."
+                message += f"\nSummary: {summary['executive_summary'][:200]}..."
             
             await self.composio_manager.post_to_slack(message)
-            console.print("[green]✅ Results posted to Slack successfully[/green]")
+            console.print("[green]Results posted to Slack successfully[/green]")
             
         except Exception as e:
             logger.error(f"Failed to post to Slack: {e}")
-            console.print(f"[red]❌ Failed to post to Slack: {e}[/red]")
+            console.print(f"[red]Failed to post to Slack: {e}[/red]")
     
     async def cleanup(self):
         """Clean up resources"""
         if self.composio_manager:
             await self.composio_manager.cleanup()
-        console.print("[blue]🧹 Agent cleanup completed[/blue]")
+        console.print("[blue]Agent cleanup completed[/blue]")
 
 def main():
     """Main function"""
@@ -290,7 +318,7 @@ def main():
     args = parser.parse_args()
     
     # Display banner
-    console.print("\n[bold blue]🚀 Productivity Agent v3.0[/bold blue]")
+    console.print("\n[bold blue]Productivity Agent v3.0[/bold blue]")
     console.print("[dim]GitHub, Jira & Slack Integration with TF-IDF Analytics[/dim]\n")
     
     if args.mode == 'console':
@@ -301,7 +329,7 @@ def main():
                 await agent.run_productivity_analysis()
             await agent.cleanup()
         
-        console.print("[green]🔥 Running productivity analysis...[/green]")
+        console.print("[green]Running productivity analysis...[/green]")
         asyncio.run(run_console())
         
     elif args.mode == 'scheduled':
@@ -313,7 +341,7 @@ def main():
                 await agent.cleanup()
         
         def scheduled_job():
-            console.print(f"[yellow]⏰ Running scheduled analysis at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}[/yellow]")
+            console.print(f"[yellow]Running scheduled analysis at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}[/yellow]")
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             loop.run_until_complete(run_scheduled())
@@ -321,8 +349,8 @@ def main():
         
         schedule.every().day.at(args.schedule_time).do(scheduled_job)
         
-        console.print(f"[green]⏰ Productivity Agent scheduled to run daily at {args.schedule_time}[/green]")
-        console.print(f"[yellow]⏭️  Next run: {args.schedule_time} (press Ctrl+C to stop)[/yellow]")
+        console.print(f"[green]Productivity Agent scheduled to run daily at {args.schedule_time}[/green]")
+        console.print(f"[yellow]Next run: {args.schedule_time} (press Ctrl+C to stop)[/yellow]")
 
         
         try:
@@ -330,7 +358,7 @@ def main():
                 schedule.run_pending()
                 time.sleep(60)
         except KeyboardInterrupt:
-            console.print("\n[yellow]👋 Scheduler stopped gracefully[/yellow]")
+            console.print("\n[yellow]Scheduler stopped gracefully[/yellow]")
 
 if __name__ == '__main__':
     main()

@@ -266,8 +266,11 @@ def main():
     """Main function to start the server and open the browser."""
     import signal
     
+    # Allow reuse of the address
+    socketserver.TCPServer.allow_reuse_address = True
+    
     # Create the server
-    httpd = socketserver.TCPServer(("", PORT), DashboardRequestHandler)
+    httpd = socketserver.TCPServer(("localhost", PORT), DashboardRequestHandler)
     
     # Define signal handler for graceful shutdown
     def signal_handler(sig, frame):
