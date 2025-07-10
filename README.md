@@ -165,9 +165,7 @@ Logs are stored in `data/logs/` with different levels:
 - `info.log` - General application events
 - `error.log` - Error messages and exceptions
 
-## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
 
 ## Support
 
